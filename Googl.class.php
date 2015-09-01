@@ -28,19 +28,20 @@ class Googl
 	
 	private static $buffer = array();
 
+
 	function __construct($apiKey = null) {
 		# Extended output mode
 		$extended = false;
-
 		# Set Google Shortener API target
 		$this->target = 'https://www.googleapis.com/urlshortener/v1/url?';
-
 		# Set API key if available
 		if ( $apiKey != null ) {
 			$this->apiKey = $apiKey;
 			$this->target .= 'key='.$apiKey.'&';
+		}else{
+			throw new Exception( __CLASS__." need api key? go to https://developers.google.com/url-shortener/v1/getting_started#auth");
+			
 		}
-
 		# Initialize cURL
 		$this->ch = curl_init();
 		# Set our default target URL
@@ -49,7 +50,8 @@ class Googl
 		curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, true);
 	}
 
-	public function shorten($url, $extended = false) {
+
+	public function shorten($url, $soft=false, $extended = false) {
 		
 		# Check buffer
 		if ( !$extended && !$this->extended && !empty(self::$buffer[$url]) ) {
@@ -59,32 +61,57 @@ class Googl
 		# Payload
 		$data = array( 'longUrl' => $url );
 		$data_string = '{ "longUrl": "'.$url.'" }';
-
 		# Set cURL options
 		curl_setopt($this->ch, CURLOPT_POST, count($data));
 		curl_setopt($this->ch, CURLOPT_POSTFIELDS, $data_string);
 		curl_setopt($this->ch, CURLOPT_HTTPHEADER, Array('Content-Type: application/json'));
-
-		if ( $extended || $this->extended) {
-			return json_decode(curl_exec($this->ch));
-		} else {
-			$ret = json_decode(curl_exec($this->ch))->id;
-			self::$buffer[$url] = $ret;
-			return $ret;
+		try{
+			if ( $extended || $this->extended) {
+				return json_decode(curl_exec($this->ch));
+			} else {
+				$res = json_decode(curl_exec($this->ch));
+				if(!$res->id && $soft){
+					return $url;	
+				}
+				$ret = $res->id;
+				self::$buffer[$url] = $ret;
+				return $ret;
+			}
+		}catch(Exception $e){
+			if($soft){
+				return $url;
+			}
+			throw $e;
 		}
+		
 	}
 
-	public function expand($url, $extended = false) {
+
+	public function expand($url, $soft=false,  $extended = false) {
 		# Set cURL options
 		curl_setopt($this->ch, CURLOPT_HTTPGET, true);
 		curl_setopt($this->ch, CURLOPT_URL, $this->target.'shortUrl='.$url);
 		
-		if ( $extended || $this->extended ) {
-			return json_decode(curl_exec($this->ch));
-		} else {
-			return json_decode(curl_exec($this->ch))->longUrl;
+		try{
+			if ( $extended || $this->extended ) {
+				return json_decode(curl_exec($this->ch));
+			} else {
+				$res = json_decode(curl_exec($this->ch));
+				if( (!$res || ($res && !isset($res->longUrl) ))  && $soft){
+					return $url;	
+				}
+				return $res->longUrl;
+			}
+		}catch(Exception $e){
+			if($soft){
+				return $url;
+			}
+			throw $e;
 		}
+
+		
 	}
+
 
 	function __destruct() {
 		# Close the curl handle
